@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Packs · VocabGuesser{% endblock %}
+{% block content %}
+  <h1>Vocabulary packs</h1>
+  <p class="muted">
+    Pick session settings, then start any pack.
+    · <a href="/words">Open dictionary →</a>
+  </p>
+
+  {% if packs %}
+    <form method="post" action="/start">
+      <div class="prefs">
+        <label>
+          <span class="muted">Progress preset</span>
+          <select name="preset_name">
+            {% for p in presets %}
+              <option value="{{ p.preset_name }}"
+                {% if p.preset_name == default_preset_name %}selected{% endif %}>
+                {{ p.preset_name }} ({{ p.actions|length }} actions)
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+
+      <ul class="pack-list">
+        {% for pack in packs %}
+          {% set ip = in_progress.get(pack.pack_id) %}
+          <li>
+            <div>
+              <strong>{{ pack.pack_name }}</strong>
+              <span class="muted"> · {{ pack.word_ids|length }} words</span>
+              {% if ip %}
+                <span class="badge">▶ {{ ip.preset_name }} · {{ ip.remaining|length }} left</span>
+              {% endif %}
+            </div>
+            <button type="submit" name="pack_id" value="{{ pack.pack_id }}" class="primary">
+              {% if ip %}Resume / restart{% else %}Start{% endif %}
+            </button>
+          </li>
+        {% endfor %}
+      </ul>
+    </form>
+
+    <p class="muted">
+      Switching to a different preset for an in-progress pack restarts it from scratch.
+    </p>
+  {% else %}
+    <p>No packs available.</p>
+  {% endif %}
+
+  {% if unknown_count %}
+    <hr style="margin: 1.5rem 0;" />
+    <p class="muted">
+      Or study a random sample from your dictionary
+      ({{ unknown_count }} unknown word{{ "s" if unknown_count != 1 else "" }}).
+    </p>
+    <form method="post" action="/start-random" id="random-form">
+      <input type="hidden" name="preset_name" id="random-preset" value="{{ default_preset_name }}" />
+      <button type="submit" class="primary">🎲 Random session (up to {{ 7 }} words)</button>
+    </form>
+  {% endif %}
+
+  <script>
+    var sel = document.querySelector('select[name="preset_name"]');
+    var hidden = document.getElementById('random-preset');
+    if (sel && hidden) {
+      sel.addEventListener('change', function () { hidden.value = this.value; });
+    }
+  </script>
+{% endblock %}

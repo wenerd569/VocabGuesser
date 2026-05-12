@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Dictionary · VocabGuesser{% endblock %}
+{% block content %}
+  <h1>Dictionary</h1>
+  <p class="muted">
+    <a href="/">← Back to packs</a> · {{ total }} words ·
+    {{ known_count }} known · {{ total - known_count }} unknown
+  </p>
+
+  {% if added_count or duplicates or not_found %}
+    <div class="flash">
+      {% if added_count %}<div>Added {{ added_count }} word{{ "s" if added_count != 1 else "" }}.</div>{% endif %}
+      {% if duplicates %}<div class="muted">Already in dictionary: {{ duplicates|join(", ") }}</div>{% endif %}
+      {% if not_found %}<div class="muted">Not found in Wiktionary: {{ not_found|join(", ") }}</div>{% endif %}
+    </div>
+  {% endif %}
+
+  <h2 style="margin-top: 1.5rem;">Add words in bulk</h2>
+  <p class="muted">One word per line.</p>
+  <form method="post" action="/words/bulk-add">
+    <textarea name="words" rows="4" style="width: 100%; font: inherit; padding: 0.5rem;"
+      placeholder="example&#10;another&#10;serendipity"></textarea>
+    <div class="row" style="justify-content: flex-start; margin-top: 0.5rem;">
+      <button type="submit" class="primary">Add words</button>
+    </div>
+  </form>
+
+  {# ── Inline word-add toast (shared by dblclick on defs and examples) ── #}
+  <div id="word-toast" class="word-toast" style="margin-top: 0.75rem;">
+    <span id="toast-label"></span>
+    <button type="button" id="toast-add">Add</button>
+    <button type="button" id="toast-cancel">Cancel</button>
+    <span id="toast-status" class="muted"></span>
+  </div>
+
+  <h2 style="margin-top: 2rem;">All words</h2>
+  {% if words or total %}
+
+    {# ── Sort helpers ── #}
+    {% set opp = "asc" if dir == "desc" else "desc" %}
+    {% macro th(col, label) %}
+      {% set d = opp if sort == col else "asc" %}
+      <a href="/words?page=1&sort={{ col }}&dir={{ d }}" style="color:inherit;text-decoration:none;white-space:nowrap;">
+        {{ label }}{% if sort == col %} {{ "↑" if dir == "asc" else "↓" }}{% endif %}
+      </a>
+    {% endmacro %}
+
+    <table class="words-table">
+      <thead>
+        <tr>
+          <th>{{ th("id",     "id")     }}</th>
+          <th>{{ th("word",   "word")   }}</th>
+          <th>{{ th("chunks", "chunks") }}</th>
+          <th>Definition</th>
+          <th>status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in words %}
+          {% set chunk_n = counts.get(w.word_id, 0) %}
+          <tr id="row-{{ w.word_id }}">
+            <td>{{ w.word_id }}</td>
+            <td><strong>{{ w.word }}</strong></td>
+            <td style="text-align:center;">
+              {% if chunk_n %}
+                <button type="button" class="btn-examples"
+                        onclick="toggleExamples({{ w.word_id }}, this)"
+                        title="{{ chunk_n }} examples">{{ chunk_n }}</button>
+              {% else %}
+                <span class="muted">0</span>
+              {% endif %}
+            </td>
+            <td class="selectable-text">
+              {% if w.eng_definitions %}
+                <ol class="defs">
+                  {% for d in w.eng_definitions %}
+                    <li>{% if d.pos %}<em>({{ d.pos|capitalize }})</em>{% endif %} {{ d.text }}</li>
+                  {% endfor %}
+                </ol>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" action="/words/{{ w.word_id }}/toggle" class="inline">
+                <input type="hidden" name="page"  value="{{ page }}" />
+                <input type="hidden" name="sort"  value="{{ sort }}" />
+                <input type="hidden" name="dir"   value="{{ dir }}"  />
+                <button type="submit" class="status-btn {{ 'known' if w.known else 'unknown' }}">
+                  {{ "✓ known" if w.known else "✗ unknown" }}
+                </button>
+              </form>
+            </td>
+          </tr>
+          {# Examples sub-row (hidden by default) #}
+          <tr id="ex-{{ w.word_id }}" style="display:none;">
+            <td></td>
+            <td colspan="4" class="selectable-text" style="padding-bottom:0.75rem;">
+              <div id="ex-content-{{ w.word_id }}" class="examples-list muted">Loading…</div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {# ── Pagination ── #}
+    {% if total_pages > 1 or page > 1 %}
+      <div class="row" style="margin-top: 1rem; justify-content: center; gap: 0.25rem;">
+        {% if page > 1 %}
+          <a href="/words?page={{ page - 1 }}&sort={{ sort }}&dir={{ dir }}" class="btn">← Prev</a>
+        {% endif %}
+        {% for p in range(1, total_pages + 1) %}
+          <a href="/words?page={{ p }}&sort={{ sort }}&dir={{ dir }}"
+             class="btn{% if p == page %} page-current{% endif %}">{{ p }}</a>
+        {% endfor %}
+        {% if page < total_pages %}
+          <a href="/words?page={{ page + 1 }}&sort={{ sort }}&dir={{ dir }}" class="btn">Next →</a>
+        {% endif %}
+      </div>
+      <p class="muted" style="text-align:center;margin-top:0.5rem;">Page {{ page }} of {{ total_pages }}</p>
+    {% endif %}
+
+  {% else %}
+    <p class="muted">No words yet. Use the form above to add them.</p>
+  {% endif %}
+
+  <style>
+    .btn-examples {
+      font-size: 0.8rem; padding: 0.15rem 0.5rem;
+      background: #e0e7ff; border-color: #a5b4fc; color: #3730a3;
+    }
+    .btn-examples.active { background: #c7d2fe; }
+    .examples-list ol { margin: 0.25rem 0; padding-left: 1.25rem; }
+    .examples-list li { margin: 0.3rem 0; font-size: 0.9rem; }
+    .selectable-text { user-select: text; }
+  </style>
+
+  <script>
+  (function () {
+    /* ── examples toggle ── */
+    var exCache = {};
+    function toggleExamples(wordId, btn) {
+      var row = document.getElementById('ex-' + wordId);
+      var content = document.getElementById('ex-content-' + wordId);
+      if (row.style.display !== 'none') {
+        row.style.display = 'none';
+        btn.classList.remove('active');
+        return;
+      }
+      row.style.display = '';
+      btn.classList.add('active');
+      if (exCache[wordId]) { content.innerHTML = exCache[wordId]; return; }
+      content.textContent = 'Loading…';
+      fetch('/words/' + wordId + '/examples', {credentials: 'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (!d.chunks || !d.chunks.length) {
+            content.innerHTML = '<em>No examples stored yet.</em>';
+          } else {
+            var html = '<ol>';
+            d.chunks.forEach(function(c){ html += '<li>' + escHtml(c) + '</li>'; });
+            html += '</ol>';
+            exCache[wordId] = html;
+            content.innerHTML = html;
+          }
+        })
+        .catch(function(){ content.textContent = 'Error loading examples.'; });
+    }
+    window.toggleExamples = toggleExamples;
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    /* ── word-add toast ── */
+    var toast    = document.getElementById('word-toast');
+    var toastLbl = document.getElementById('toast-label');
+    var toastAdd = document.getElementById('toast-add');
+    var toastCnl = document.getElementById('toast-cancel');
+    var toastSt  = document.getElementById('toast-status');
+    var pending  = '';
+
+    function hideToast() { toast.style.display='none'; pending=''; toastSt.textContent=''; }
+    function showToast(word) {
+      pending = word;
+      toastLbl.textContent = 'Add "' + word + '" to your dictionary?';
+      toastSt.textContent = '';
+      toastAdd.disabled = false; toastAdd.style.display = '';
+      toastCnl.textContent = 'Cancel';
+      toast.style.display = 'flex';
+    }
+    toastCnl.addEventListener('click', hideToast);
+    toastAdd.addEventListener('click', function () {
+      if (!pending) return;
+      toastAdd.disabled = true; toastSt.textContent = 'Adding…';
+      var fd = new FormData(); fd.append('word', pending);
+      fetch('/words/add', {method:'POST', body:fd, credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.added) toastSt.textContent = 'Added "' + d.word + '".';
+          else if (d.duplicate) toastSt.textContent = '"' + d.word + '" already in dictionary.';
+          else if (d.not_found) toastSt.textContent = '"' + pending + '" not found in Wiktionary.';
+          else toastSt.textContent = 'Could not add word.';
+          toastAdd.style.display = 'none'; toastCnl.textContent = 'Close';
+        })
+        .catch(function(){ toastSt.textContent = 'Network error.'; toastAdd.disabled = false; });
+    });
+
+    /* ── double-click to add on selectable cells ── */
+    document.querySelectorAll('.selectable-text').forEach(function(cell) {
+      cell.addEventListener('dblclick', function () {
+        var sel = (window.getSelection().toString() || '').trim();
+        var word = sel.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, '');
+        if (!word || /\s/.test(word)) return;
+        toastAdd.style.display = ''; toastCnl.textContent = 'Cancel';
+        showToast(word);
+      });
+    });
+  })();
+  </script>
+{% endblock %}

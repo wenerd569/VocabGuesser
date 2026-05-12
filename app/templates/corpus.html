@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Corpus · VocabGuesser{% endblock %}
+{% block content %}
+  <h1>Corpus</h1>
+  <p class="muted">
+    <a href="/">← Back to packs</a> ·
+    {{ total_chunks }} chunks · {{ "%.1f"|format(total_mb) }} MB stored
+  </p>
+
+  {# ── Load form ───────────────────────────────────────────────────────── #}
+  <div style="margin:1.5rem 0;">
+    <h2>Load from Wikipedia</h2>
+    <p class="muted">
+      Streams English Wikipedia articles, splits them into sentences, and
+      indexes only sentences that contain a word from your dictionary.
+      Only relevant chunks are stored — the actual download may be much
+      larger than the stored result.
+    </p>
+    {% if load_status.running %}
+      <div class="flash" style="background:#fefce8;border-color:#fbbf24;">
+        ⏳ Loading in progress —
+        {{ "%.1f"|format(load_status.done_bytes / 1_000_000) }} MB scanned /
+        {{ "%.0f"|format(load_status.target_bytes / 1_000_000) }} MB target ·
+        {{ load_status.chunks_added }} chunks added so far.
+        <span id="live-status"></span>
+      </div>
+    {% elif load_status.error %}
+      <div class="flash" style="background:#fff1f2;border-color:#fca5a5;">
+        ✗ Last load failed: {{ load_status.error }}
+      </div>
+    {% endif %}
+
+    <form method="post" action="/corpus/load" style="margin-top:0.75rem;">
+      <label style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+        <span class="muted">Target size (MB):</span>
+        <input type="number" name="target_mb" value="100" min="10" max="500"
+               style="width:5rem;font:inherit;padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:6px;" />
+        <button type="submit" class="primary"
+          {% if load_status.running %}disabled{% endif %}>
+          {% if load_status.running %}Loading…{% else %}Start loading{% endif %}
+        </button>
+      </label>
+    </form>
+  </div>
+
+  {# ── Coverage stats ──────────────────────────────────────────────────── #}
+  <h2 style="margin-top:1.5rem;">Coverage</h2>
+  <p class="muted">
+    Words covered by at least one chunk:
+    <strong>{{ coverage.covered }} / {{ coverage.total }}</strong>
+    {% if coverage.total %}
+      ({{ "%.0f"|format(100 * coverage.covered / coverage.total) }}%)
+    {% endif %}
+  </p>
+
+  {% if buckets %}
+    <h3 style="margin-top:1rem;font-size:0.95rem;text-transform:uppercase;letter-spacing:0.05em;">
+      Chunks-per-word histogram
+    </h3>
+    <table style="border-collapse:collapse;margin-top:0.4rem;">
+      <thead>
+        <tr>
+          {% for label in buckets %}
+            <th style="padding:0.3rem 0.75rem;border:1px solid #ddd;background:#f7f7f7;
+                       font-size:0.8rem;text-align:center;">{{ label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for label, count in buckets.items() %}
+            <td style="padding:0.3rem 0.75rem;border:1px solid #ddd;text-align:center;">
+              {{ count }}
+            </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:0.4rem;font-size:0.8rem;">
+      Columns = number of chunks available per word (0 = no chunks yet).
+    </p>
+  {% endif %}
+
+  <script>
+    /* Poll /corpus/status while a load is running and update the live badge */
+    (function () {
+      var badge = document.getElementById('live-status');
+      if (!badge) return;  // no load running on page load
+      function poll() {
+        fetch('/corpus/status')
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            if (!d.running) { window.location.reload(); return; }
+            badge.textContent = ' (refreshing…)';
+            setTimeout(poll, 3000);
+          })
+          .catch(function(){ setTimeout(poll, 5000); });
+      }
+      setTimeout(poll, 3000);
+    })();
+  </script>
+{% endblock %}

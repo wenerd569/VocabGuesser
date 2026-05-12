@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}{{ word.word if word else "Card" }} · VocabGuesser{% endblock %}
+{% block content %}
+  <p class="muted">
+    <a href="/">← All packs</a> · {{ pack.pack_name }} ·
+    preset <strong>{{ progress.preset_name }}</strong> ·
+    {{ remaining_count }} remaining · {{ learned_count }} learned
+  </p>
+
+  {# ── Card (flippable) ────────────────────────────────────────────────── #}
+  <div class="card-scene">
+    <div id="flipper" class="card-flipper">
+
+      {# Front face #}
+      <div class="card-face card-front">
+        {% if not task or task.task_type == "flashcard" %}
+          <div class="word">{{ word.word if word else "—" }}</div>
+          <div class="muted" style="margin-top:0.5rem;">
+            familiarity: {{ "%.2f"|format(current_familiarity) }} / 1.00
+          </div>
+
+        {% elif task.task_type == "fill_gap" %}
+          <div class="task-label muted">Fill in the gap</div>
+          <div class="gap-text">{{ task.display_text }}</div>
+
+        {% elif task.task_type == "which_definition" %}
+          <div class="task-label muted">Which definition fits?</div>
+          <div class="word" style="margin-bottom:0.5rem;">{{ word.word if word else "—" }}</div>
+          <div class="which-def-options" id="def-options">
+            {% for opt in task.definition_options %}
+              <button type="button" class="def-option"
+                      onclick="submitTask('{{ opt.word_id }}')">
+                {{ opt.definition }}
+              </button>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+
+      {# Back face — always shows full definitions #}
+      <div class="card-face card-back">
+        <div class="lang-tag">English definition</div>
+        {% if word and word.eng_definitions %}
+          <ol class="defs">
+            {% for d in word.eng_definitions %}
+              <li>{% if d.pos %}<em>({{ d.pos|capitalize }})</em>{% endif %} {{ d.text }}</li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="muted"><em>No definition yet.</em></p>
+        {% endif %}
+        <p class="muted" style="font-size:0.8rem;margin-top:0.75rem;">
+          Tip: double-click any word to add it to your dictionary.
+        </p>
+      </div>
+
+    </div>{# /flipper #}
+  </div>
+
+  {# ── Word-add inline toast ───────────────────────────────────────────── #}
+  <div id="word-toast" class="word-toast">
+    <span id="toast-label"></span>
+    <button type="button" id="toast-add">Add</button>
+    <button type="button" id="toast-cancel">Cancel</button>
+    <span id="toast-status" class="muted"></span>
+  </div>
+
+  {# ── Task result notification ─────────────────────────────────────────── #}
+  <div id="result-toast" class="result-toast" style="display:none;"></div>
+
+  {# ── Controls row ────────────────────────────────────────────────────── #}
+  <div class="row" style="margin-bottom:0.5rem;">
+    <button type="button" id="flip-btn" onclick="flipCard()">Show definition</button>
+    {% if task and task.task_type != "flashcard" %}
+      <button type="button" class="skip-btn" onclick="submitTask('')">Skip</button>
+    {% endif %}
+  </div>
+
+  {# ── Fill-gap answer UI ──────────────────────────────────────────────── #}
+  {% if task and task.task_type == "fill_gap" %}
+    <div id="task-ui" class="task-ui">
+      {% if task.answer_mode == "choice" %}
+        <div class="row">
+          {% for choice in task.choices %}
+            <button type="button" class="task-choice" onclick="submitTask('{{ choice }}')">
+              {{ choice }}
+            </button>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+          <input type="text" id="task-input" placeholder="Type the word…"
+                 autocomplete="off" autocorrect="off" spellcheck="false"
+                 style="font:inherit;padding:0.4rem 0.6rem;border:1px solid #999;border-radius:6px;flex:1;" />
+          <button type="button" onclick="submitTask(document.getElementById('task-input').value)">
+            Submit
+          </button>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {# ── Flashcard action buttons ────────────────────────────────────────── #}
+  {% if not task or task.task_type == "flashcard" %}
+    <div class="row" id="action-row">
+      {% for action_name in progress.actions %}
+        <form method="post" action="/card/action" class="inline">
+          <input type="hidden" name="action" value="{{ action_name }}" />
+          <button type="submit">{{ action_name }}</button>
+        </form>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# ── Add random unknown words to this session ── #}
+  <div class="row" style="margin-top:0.75rem;">
+    <button type="button" id="add-random-btn" onclick="addRandomWords()">+ Add 5 words to queue</button>
+    <span id="add-random-status" class="muted" style="font-size:0.85rem;"></span>
+  </div>
+
+  <hr style="margin:1.5rem 0;" />
+  <p class="muted" style="margin-bottom:0.25rem;">How's this pack going?</p>
+  <div class="row" style="justify-content:flex-start;">
+    {% for mark, label in [("like","👍 Like"), ("dislike","👎 Dislike"), ("confused","😕 Confused")] %}
+      <form method="post" action="/card/feedback" class="inline">
+        <input type="hidden" name="mark" value="{{ mark }}" />
+        <button type="submit">{{ label }}</button>
+      </form>
+    {% endfor %}
+  </div>
+
+  <script>
+  (function () {
+    /* ── flip ── */
+    var flipper = document.getElementById('flipper');
+    var flipBtn = document.getElementById('flip-btn');
+    function flipCard() {
+      flipper.classList.toggle('flipped');
+      flipBtn.textContent = flipper.classList.contains('flipped') ? 'Back to word' : 'Show definition';
+      if (!flipper.classList.contains('flipped')) hideWordToast();
+    }
+    window.flipCard = flipCard;
+
+    /* ── word-add toast ── */
+    var wToast   = document.getElementById('word-toast');
+    var toastLbl = document.getElementById('toast-label');
+    var toastAdd = document.getElementById('toast-add');
+    var toastCnl = document.getElementById('toast-cancel');
+    var toastSt  = document.getElementById('toast-status');
+    var pendingWord = '';
+    function hideWordToast() { wToast.style.display='none'; pendingWord=''; toastSt.textContent=''; }
+    function showWordToast(w) {
+      pendingWord = w;
+      toastLbl.textContent = 'Add "'+w+'" to your dictionary?';
+      toastSt.textContent = '';
+      toastAdd.disabled = false; toastAdd.style.display = '';
+      toastCnl.textContent = 'Cancel';
+      wToast.style.display = 'flex';
+    }
+    toastCnl.addEventListener('click', hideWordToast);
+    toastAdd.addEventListener('click', function () {
+      if (!pendingWord) return;
+      toastAdd.disabled = true; toastSt.textContent = 'Adding…';
+      var fd = new FormData(); fd.append('word', pendingWord);
+      fetch('/card/add-word', {method:'POST', body:fd, credentials:'same-origin'})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          var q = d.queued ? ' Added to this session.' : '';
+          if (d.added) toastSt.textContent = 'Added "'+d.word+'".'+q;
+          else if (d.duplicate) toastSt.textContent = '"'+d.word+'" already in dictionary.'+q;
+          else if (d.not_found) toastSt.textContent = '"'+pendingWord+'" not found in Wiktionary.';
+          else toastSt.textContent = 'Could not add word.';
+          toastAdd.style.display='none'; toastCnl.textContent='Close';
+        })
+        .catch(function(){ toastSt.textContent='Network error.'; toastAdd.disabled=false; });
+    });
+    function handleDblClick() {
+      var sel = (window.getSelection().toString()||'').trim();
+      var w = sel.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g,'');
+      if (!w || /\s/.test(w)) return;
+      toastAdd.style.display=''; toastCnl.textContent='Cancel';
+      showWordToast(w);
+    }
+    document.querySelector('.card-back').addEventListener('dblclick', function () {
+      if (!flipper.classList.contains('flipped')) return;
+      handleDblClick();
+    });
+    document.querySelector('.card-front').addEventListener('dblclick', function () {
+      if (flipper.classList.contains('flipped')) return;
+      handleDblClick();
+    });
+
+    /* ── task submission ── */
+    var resultToast = document.getElementById('result-toast');
+    var taskDone = false;
+    function submitTask(answer) {
+      if (taskDone) return;
+      taskDone = true;
+      // disable all task UI
+      document.querySelectorAll('.task-choice, .def-option, .skip-btn, #task-input').forEach(function(el){
+        el.disabled = true;
+      });
+      var fd = new FormData(); fd.append('answer', answer);
+      fetch('/card/task-response', {method:'POST', body:fd, credentials:'same-origin'})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          var msg, cls;
+          if (d.task_type === 'which_definition') {
+            msg = d.correct ? '✓ Correct!' : '✗ Incorrect.';
+            cls = d.correct ? 'result-correct' : 'result-wrong';
+          } else {
+            msg = 'The correct word is: ' + d.correct_word;
+            cls = answer.trim().toLowerCase() === d.correct_word.toLowerCase()
+                  ? 'result-correct' : 'result-wrong';
+          }
+          resultToast.textContent = msg;
+          resultToast.className = 'result-toast ' + cls;
+          resultToast.style.display = 'block';
+          setTimeout(function(){ window.location.href='/card'; }, 2000);
+        })
+        .catch(function(){
+          resultToast.textContent = 'Network error — tap to continue.';
+          resultToast.className = 'result-toast';
+          resultToast.style.display = 'block';
+          resultToast.onclick = function(){ window.location.href='/card'; };
+        });
+    }
+    window.submitTask = submitTask;
+
+    /* ── add random words ── */
+    function addRandomWords() {
+      var btn = document.getElementById('add-random-btn');
+      var st  = document.getElementById('add-random-status');
+      btn.disabled = true; st.textContent = 'Adding…';
+      var fd = new FormData(); fd.append('n', '5');
+      fetch('/card/add-random', {method:'POST', body:fd, credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.added > 0) {
+            st.textContent = 'Added ' + d.added + ' word' + (d.added !== 1 ? 's' : '') + ': ' + d.words.join(', ') + '.';
+          } else {
+            st.textContent = 'No unknown words left to add.';
+          }
+          btn.disabled = false;
+        })
+        .catch(function(){ st.textContent = 'Error.'; btn.disabled = false; });
+    }
+    window.addRandomWords = addRandomWords;
+
+    /* enter key for text input */
+    var inp = document.getElementById('task-input');
+    if (inp) inp.addEventListener('keydown', function(e){
+      if (e.key==='Enter') submitTask(inp.value);
+    });
+  })();
+  </script>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Done! · VocabGuesser{% endblock %}
+{% block content %}
+  <h1>🎉 Pack complete</h1>
+  {% if pack %}
+    <p>
+      You've worked through every word in <strong>{{ pack.pack_name }}</strong>
+      {% if progress %}using preset <strong>{{ progress.preset_name }}</strong>{% endif %}.
+    </p>
+    <p class="muted">{{ learned_count }} word{{ "s" if learned_count != 1 else "" }} reached full familiarity.</p>
+  {% else %}
+    <p>You're all done.</p>
+  {% endif %}
+
+  {% if progress %}
+    <h2 style="margin-top: 1.5rem;">Rate this session</h2>
+    <p class="muted">Each scale: 1 = poor, 5 = great.</p>
+    <form method="post" action="/done/rate">
+      {% set categories = [
+          ("usefulness", "Usefulness of pack"),
+          ("comfort",    "Comfort of session"),
+          ("speed",      "Was it fast enough?")
+      ] %}
+      {% for field, label in categories %}
+        <fieldset style="margin: 0.75rem 0; padding: 0.5rem 1rem; border: 1px solid #ddd; border-radius: 8px;">
+          <legend>{{ label }}</legend>
+          <div class="row" style="justify-content: flex-start;">
+            {% for n in [1, 2, 3, 4, 5] %}
+              <label style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem;">
+                <input type="radio" name="{{ field }}" value="{{ n }}" required />
+                {{ n }}★
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+      {% endfor %}
+      <div class="row" style="justify-content: flex-start; margin-top: 1rem;">
+        <button type="submit" class="primary">Submit ratings</button>
+        <a class="btn" href="/">Skip and back to packs</a>
+      </div>
+    </form>
+  {% else %}
+    <p><a class="btn" href="/">← Back to packs</a></p>
+  {% endif %}
+{% endblock %}

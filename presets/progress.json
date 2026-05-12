@@ -1,0 +1,36 @@
+[
+  {
+    "preset_name": "Default",
+    "actions": {
+      "learned": 1.0,
+      "not learned": 0.0
+    }
+  },
+  {
+    "preset_name": "Three-step",
+    "actions": {
+      "easy": 1.0,
+      "ok": 0.5,
+      "again": 0.0
+    }
+  },
+  {
+    "preset_name": "Graded (4)",
+    "actions": {
+      "easy": 1.0,
+      "good": 0.5,
+      "hard": 0.25,
+      "again": 0.0
+    }
+  },
+  {
+    "preset_name": "Five-step",
+    "actions": {
+      "perfect": 1.0,
+      "easy": 0.5,
+      "ok": 0.34,
+      "hard": 0.2,
+      "again": 0.0
+    }
+  }
+]

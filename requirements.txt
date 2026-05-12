@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+spacy==3.8.2
+sentence-transformers==3.3.1
+httpx==0.28.1
+datasets
