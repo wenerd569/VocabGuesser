@@ -40,7 +40,7 @@
       {# Back face — always shows full definitions #}
       <div class="card-face card-back">
         <div class="lang-tag">English definition</div>
-        {% if word and word.eng_definitions %}
+        {% if word and word.eng_definitions and not task.task_type == "which_definition" %}
           <ol class="defs">
             {% for d in word.eng_definitions %}
               <li>{% if d.pos %}<em>({{ d.pos|capitalize }})</em>{% endif %} {{ d.text }}</li>

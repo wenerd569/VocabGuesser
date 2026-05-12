@@ -190,6 +190,8 @@ async def page_card(
         other_words = [w for wid in session_wids if (w := storage.get_word(wid)) and wid != word.word_id]
         progress.generate_task(word, other_words, chunk)
 
+    
+
     response = templates.TemplateResponse(
         request,
         "card.html",

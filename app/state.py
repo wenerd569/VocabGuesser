@@ -125,7 +125,7 @@ def _generate_task(
     # ── fill_gap ───────────────────────────────────────────────────────────
     if task_type == "fill_gap":
         assert source_text is not None
-        style = random.choice(["full", "partial_squeeze", "partial_no_squeeze"])
+        style = random.choice(["full"]) # random.choice(["full", "partial_squeeze", "partial_no_squeeze"])
 
         if style == "full":
             mask = "___"
