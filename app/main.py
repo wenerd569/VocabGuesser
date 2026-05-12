@@ -6,15 +6,23 @@ from pathlib import Path
 from typing import Annotated
 import asyncio
 
-from fastapi import Cookie, FastAPI, Form, HTTPException, Request
+from typing import Optional
+
+from fastapi import APIRouter, Cookie, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+
+from pydantic import BaseModel
 
 from .chunks import LOAD_STATUS, ChunkStore, start_load
 from .config import PAGE_SIZE, RANDOM_PACK_ID, RANDOM_PACK_SIZE
 from .logging_mod import write_raw_logs
 from .state import SessionState, get_or_create, sessions
 from .storage import Pack, Storage
+from .grammar_assistant import (
+    generate_exercise, validate_answer, submit_custom_exercise, get_enabled_types,
+)
+from .grammar_assistant.models import ExerciseType, Exercise, ValidationResult
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -25,8 +33,18 @@ chunk_store: ChunkStore = ChunkStore()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    try:
+        from .grammar_assistant.tools.language_tool import _get_tool
+        await asyncio.to_thread(_get_tool)
+    except Exception:
+        pass
     yield
     await storage.wikibase.aclose()
+    try:
+        from .grammar_assistant.tools.language_tool import close_tool
+        await asyncio.to_thread(close_tool)
+    except Exception:
+        pass
 
 
 app = FastAPI(title="VocabGuesser v0", lifespan=lifespan)
@@ -630,6 +648,77 @@ async def words_toggle(
     response = RedirectResponse(url=f"/words?page={page}&sort={sort}&dir={dir}", status_code=303)
     _attach_sid_cookie(response, sid, is_new)
     return response
+
+
+# --- Grammar assistant -------------------------------------------------------
+
+
+grammar_router = APIRouter(prefix="/grammar", tags=["grammar"])
+
+
+class GenerateRequest(BaseModel):
+    exercise_type: Optional[ExerciseType] = None
+    user_id: Optional[str] = None
+
+
+class ValidateRequest(BaseModel):
+    exercise: Exercise
+    user_answer: str
+    user_id: Optional[str] = None
+
+
+class CustomRequest(BaseModel):
+    user_sentence: str
+    exercise_type: ExerciseType
+    user_id: Optional[str] = None
+
+
+@grammar_router.post("/exercise", response_model=Exercise)
+async def post_exercise(req: GenerateRequest):
+    try:
+        return await asyncio.to_thread(generate_exercise, req.exercise_type, req.user_id)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@grammar_router.post("/validate", response_model=ValidationResult)
+async def post_validate(req: ValidateRequest):
+    try:
+        return await asyncio.to_thread(validate_answer, req.exercise, req.user_answer, req.user_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@grammar_router.post("/custom-exercise", response_model=Exercise)
+async def post_custom(req: CustomRequest):
+    try:
+        return await asyncio.to_thread(submit_custom_exercise, req.user_sentence, req.exercise_type, req.user_id)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@grammar_router.get("/types")
+async def get_types():
+    return {"types": [t.value for t in get_enabled_types()]}
+
+
+@grammar_router.get("", response_class=HTMLResponse)
+async def page_grammar(
+    request: Request,
+    sid: Annotated[str | None, Cookie()] = None,
+):
+    sid, _, is_new = _ensure_session(sid)
+    response = templates.TemplateResponse(request, "grammar.html", {})
+    _attach_sid_cookie(response, sid, is_new)
+    return response
+
+
+app.include_router(grammar_router)
+
+
+# --- Random word add ---------------------------------------------------------
 
 
 @app.post("/card/add-random")

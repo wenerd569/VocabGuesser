@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+{% block title %}Grammar Practice · VocabGuesser{% endblock %}
+{% block content %}
+<style>
+  /* ── layout ───────────────────────────────────────────────── */
+  .ga-wrap {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 7rem);
+    min-height: 420px;
+  }
+  .ga-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .ga-header h1 { margin: 0; }
+
+  /* ── messages ─────────────────────────────────────────────── */
+  .ga-messages {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+  }
+  .ga-msg {
+    display: flex;
+    flex-direction: column;
+    max-width: 90%;
+    gap: 0.15rem;
+  }
+  .ga-msg.assistant { align-self: flex-start; }
+  .ga-msg.user      { align-self: flex-end; }
+  .ga-msg.feedback  { align-self: flex-start; }
+
+  .ga-bubble {
+    padding: 0.65rem 0.9rem;
+    border-radius: 14px;
+    line-height: 1.5;
+    font-size: 0.95rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ga-msg.assistant .ga-bubble {
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-bottom-left-radius: 4px;
+  }
+  .ga-msg.user .ga-bubble {
+    background: #2563eb;
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .ga-msg.feedback .ga-bubble {
+    border-bottom-left-radius: 4px;
+  }
+  .ga-bubble.correct {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+  }
+  .ga-bubble.wrong {
+    background: #fff1f2;
+    border: 1px solid #fca5a5;
+  }
+
+  .ga-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+    padding: 0 0.2rem;
+  }
+  .ga-msg.user .ga-label { text-align: right; }
+
+  /* exercise card inside bubble */
+  .ex-topic {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6b7280;
+    margin-bottom: 0.35rem;
+  }
+  .ex-instruction { font-weight: 600; margin-bottom: 0.5rem; }
+  .ex-prompt {
+    font-size: 1.05rem;
+    font-style: italic;
+    padding: 0.5rem 0.75rem;
+    background: rgba(0,0,0,0.04);
+    border-left: 3px solid #9ca3af;
+    border-radius: 0 6px 6px 0;
+    white-space: pre-wrap;
+  }
+
+  /* feedback card inside bubble */
+  .fb-verdict {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+  .fb-verdict.correct { color: #16a34a; }
+  .fb-verdict.wrong   { color: #dc2626; }
+  .fb-rule { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.4rem; }
+  .fb-explanation { margin-bottom: 0.4rem; }
+  .fb-review {
+    font-size: 0.85rem;
+    color: #374151;
+    padding: 0.35rem 0.6rem;
+    background: rgba(0,0,0,0.04);
+    border-radius: 6px;
+  }
+  .fb-review strong { display: block; margin-bottom: 0.2rem; color: #111; }
+
+  /* ── typing indicator ─────────────────────────────────────── */
+  .ga-typing {
+    display: none;
+    align-self: flex-start;
+    padding: 0.55rem 0.9rem;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    border-bottom-left-radius: 4px;
+    gap: 4px;
+    align-items: center;
+  }
+  .ga-typing.visible { display: flex; }
+  .dot {
+    width: 7px; height: 7px;
+    background: #9ca3af;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); }
+    40%           { transform: translateY(-6px); }
+  }
+
+  /* ── input bar ────────────────────────────────────────────── */
+  .ga-input-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+  }
+  .ga-controls {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .ga-type-select {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fafafa;
+    flex-shrink: 0;
+  }
+  .ga-compose {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .ga-compose textarea {
+    flex: 1;
+    font: inherit;
+    font-size: 0.95rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    resize: none;
+    line-height: 1.4;
+    min-height: 2.6rem;
+    max-height: 8rem;
+    overflow-y: auto;
+    transition: border-color 120ms;
+  }
+  .ga-compose textarea:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+  }
+  .ga-compose textarea:disabled { background: #f5f5f5; color: #aaa; }
+  .ga-send {
+    padding: 0.55rem 1rem;
+    align-self: flex-end;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.95rem;
+    transition: background 90ms;
+    flex-shrink: 0;
+  }
+  .ga-send:hover:not(:disabled) { background: #1d4ed8; }
+  .ga-send:disabled { opacity: 0.45; cursor: default; }
+
+  /* dark-mode tweaks */
+  @media (prefers-color-scheme: dark) {
+    .ga-msg.assistant .ga-bubble,
+    .ga-typing { background: #1f2937; border-color: #374151; }
+    .ex-prompt { background: rgba(255,255,255,0.06); border-color: #4b5563; }
+    .fb-review { background: rgba(255,255,255,0.06); }
+    .ga-bubble.correct { background: #052e16; border-color: #166534; }
+    .ga-bubble.wrong   { background: #450a0a; border-color: #991b1b; }
+    .fb-verdict.correct { color: #4ade80; }
+    .fb-verdict.wrong   { color: #f87171; }
+    .ga-type-select { background: #1f2937; border-color: #374151; color: inherit; }
+    .ga-compose textarea { background: #1f2937; border-color: #374151; color: inherit; }
+    .ga-compose textarea:focus { border-color: #60a5fa; }
+    .dot { background: #6b7280; }
+  }
+</style>
+
+<div class="ga-wrap">
+  <div class="ga-header">
+    <h1>Grammar Practice</h1>
+    <span class="muted" style="font-size:0.85rem;">Llama 3.3 · B2 English</span>
+  </div>
+
+  <div class="ga-messages" id="messages">
+    <div class="ga-msg assistant">
+      <span class="ga-label">Assistant</span>
+      <div class="ga-bubble">
+        Hello! I'll generate grammar exercises at B2 level.<br>
+        Choose an exercise type (or leave it random) and press <strong>New exercise</strong> to start.
+      </div>
+    </div>
+    <div class="ga-typing" id="typing">
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+
+  <div class="ga-input-area">
+    <div class="ga-controls">
+      <select class="ga-type-select" id="typeSelect">
+        <option value="">🎲 Random type</option>
+      </select>
+      <button class="btn" id="newBtn" onclick="newExercise()">New exercise</button>
+    </div>
+    <div class="ga-compose">
+      <textarea
+        id="answerInput"
+        placeholder="Type your answer here…"
+        rows="1"
+        disabled
+        onkeydown="handleKey(event)"
+        oninput="autoResize(this)"
+      ></textarea>
+      <button class="ga-send" id="sendBtn" disabled onclick="submitAnswer()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var currentExercise = null;
+  var busy = false;
+
+  // ── populate type selector ───────────────────────────────────────────────
+  fetch('/grammar/types')
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var sel = document.getElementById('typeSelect');
+      var labels = {
+        error_correction:    'Error correction',
+        conditional:         'Conditionals',
+        tense_transformation:'Tense transformation',
+        gerund_infinitive:   'Gerund / Infinitive',
+        reported_speech:     'Reported speech',
+        modal_deduction:     'Modal deduction',
+        articles:            'Articles',
+        inversion:           'Inversion',
+        passive_voice:       'Passive voice',
+        prepositions:        'Prepositions',
+        sentence_combining:  'Sentence combining',
+        phrasal_verbs:       'Phrasal verbs',
+      };
+      (data.types || []).forEach(function (t) {
+        var opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = labels[t] || t;
+        sel.appendChild(opt);
+      });
+    });
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+  function msgs() { return document.getElementById('messages'); }
+  function typing() { return document.getElementById('typing'); }
+
+  function scrollBottom() {
+    var m = msgs();
+    m.scrollTop = m.scrollHeight;
+  }
+
+  function setBusy(on) {
+    busy = on;
+    document.getElementById('newBtn').disabled = on;
+    document.getElementById('sendBtn').disabled = on || !currentExercise;
+    document.getElementById('answerInput').disabled = on || !currentExercise;
+    typing().classList.toggle('visible', on);
+    scrollBottom();
+  }
+
+  function appendMsg(role, html) {
+    var t = typing();
+    var div = document.createElement('div');
+    div.className = 'ga-msg ' + role;
+    var labels = { assistant: 'Assistant', user: 'You', feedback: 'Assistant' };
+    div.innerHTML =
+      '<span class="ga-label">' + labels[role] + '</span>' +
+      '<div class="ga-bubble">' + html + '</div>';
+    msgs().insertBefore(div, t);
+    scrollBottom();
+    return div;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // ── new exercise ─────────────────────────────────────────────────────────
+  window.newExercise = function () {
+    if (busy) return;
+    setBusy(true);
+    var type = document.getElementById('typeSelect').value || null;
+    fetch('/grammar/exercise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exercise_type: type }),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(function (ex) {
+        currentExercise = ex;
+        var html =
+          '<div class="ex-topic">' + escHtml(ex.grammar_topic) + '</div>' +
+          '<div class="ex-instruction">' + escHtml(ex.instruction) + '</div>' +
+          '<div class="ex-prompt">' + escHtml(ex.prompt) + '</div>';
+        appendMsg('assistant', html);
+        setBusy(false);
+        document.getElementById('answerInput').focus();
+      })
+      .catch(function (e) {
+        appendMsg('assistant', '⚠️ ' + escHtml(String(e)));
+        setBusy(false);
+      });
+  };
+
+  // ── submit answer ────────────────────────────────────────────────────────
+  window.submitAnswer = function () {
+    if (busy || !currentExercise) return;
+    var inp = document.getElementById('answerInput');
+    var answer = inp.value.trim();
+    if (!answer) return;
+
+    appendMsg('user', escHtml(answer));
+    inp.value = '';
+    autoResize(inp);
+    setBusy(true);
+
+    fetch('/grammar/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exercise: currentExercise, user_answer: answer }),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(function (v) {
+        var ok = v.is_correct;
+        var verdictClass = ok ? 'correct' : 'wrong';
+        var verdictText  = ok ? '✓ Correct' : '✗ Incorrect';
+        var html = '<div class="fb-verdict ' + verdictClass + '">' + verdictText + '</div>';
+        html += '<div class="fb-rule">' + escHtml(v.rule_name) + '</div>';
+        html += '<div class="fb-explanation">' + escHtml(v.explanation) + '</div>';
+        if (!ok && v.correct_answer) {
+          html += '<div class="fb-review"><strong>Correct answer:</strong>' + escHtml(v.correct_answer) + '</div>';
+        }
+        if (!ok && v.what_to_review) {
+          html += '<div class="fb-review" style="margin-top:0.35rem"><strong>Review:</strong>' + escHtml(v.what_to_review) + '</div>';
+        }
+        var msgEl = appendMsg('feedback', html);
+        msgEl.querySelector('.ga-bubble').classList.add(verdictClass);
+        currentExercise = null;
+        setBusy(false);
+      })
+      .catch(function (e) {
+        appendMsg('feedback', '⚠️ ' + escHtml(String(e)));
+        setBusy(false);
+      });
+  };
+
+  // ── keyboard shortcuts ───────────────────────────────────────────────────
+  window.handleKey = function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitAnswer();
+    }
+  };
+
+  window.autoResize = function (el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+  };
+})();
+</script>
+{% endblock %}

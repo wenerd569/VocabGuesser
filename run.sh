@@ -16,6 +16,7 @@ if command -v podman &> /dev/null; then
       -v "$(pwd)/data:/app/data" \
       -v "$(pwd)/presets:/app/presets:ro" \
       -v "$(pwd)/logs:/app/logs" \
+      --env-file .env \
       "$IMAGE"
 elif command -v docker &> /dev/null; then
     echo "Using Docker..."
@@ -25,6 +26,7 @@ elif command -v docker &> /dev/null; then
       -v "$(pwd)/data:/app/data" \
       -v "$(pwd)/presets:/app/presets:ro" \
       -v "$(pwd)/logs:/app/logs" \
+      --env-file .env \
       "$IMAGE"
 else
     echo "Error: Neither Podman nor Docker is installed"
