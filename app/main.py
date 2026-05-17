@@ -743,7 +743,7 @@ async def card_add_random(
         "added_count": len(sample),
         "word_ids": [w.word_id for w in sample],
     })
-    payload = {"added": len(sample), "words": [w.word for w in sample]}
+    payload = {"added": len(sample)}
     response = JSONResponse(payload)
     _attach_sid_cookie(response, sid, is_new)
     return response
