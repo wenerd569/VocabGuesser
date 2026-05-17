@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────
@@ -32,3 +33,8 @@ RANDOM_PACK_SIZE = 7
 
 # ── UI ────────────────────────────────────────────────────────────────────
 PAGE_SIZE = 20
+
+# ── Scheduler (LLM-based word selection) ──────────────────────────────────
+ALGO_VERSION = os.environ.get("ALGO_VERSION", "v1_legacy")
+SCHEDULER_MODEL = os.environ.get("SCHEDULER_MODEL", "llama-3.1-8b-instant")
+SCHEDULER_TIMEOUT = float(os.environ.get("SCHEDULER_TIMEOUT", "8"))

@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from .chunks import LOAD_STATUS, ChunkStore, start_load
 from .config import PAGE_SIZE, RANDOM_PACK_ID, RANDOM_PACK_SIZE
 from .logging_mod import write_raw_logs
+from .scheduler import pick_next_word
 from .state import SessionState, get_or_create, sessions
 from .storage import Pack, Storage
 from .grammar_assistant import (
@@ -194,6 +195,34 @@ async def page_card(
         _attach_sid_cookie(response, sid, is_new)
         return response
 
+    # LLM scheduler: reorder remaining so the recommended word is shown first.
+    if (
+        progress.algo_version == "v2_llm"
+        and progress.current is None
+        and len(progress.remaining) > 1
+    ):
+        picked = await asyncio.to_thread(
+            pick_next_word,
+            progress.history,
+            list(progress.remaining),
+            storage.words,
+            progress.word_info,
+        )
+        write_raw_logs({
+            "sid": sid,
+            "event": "scheduler_pick",
+            "algo_version": progress.algo_version,
+            "pack_id": progress.pack_id,
+            "picked_word_id": picked,
+            "fallback": picked is None,
+        })
+        if picked is not None:
+            try:
+                progress.remaining.remove(picked)
+                progress.remaining.appendleft(picked)
+            except ValueError:
+                pass
+
     word_id = progress.peek_current()
     word = storage.get_word(word_id) if word_id is not None else None
     pack = storage.get_pack(progress.pack_id) or Pack(
@@ -241,6 +270,7 @@ async def card_action(
         write_raw_logs({
             "sid": sid,
             "event": "word_action_applied",
+            "algo_version": progress.algo_version,
             "pack_id": progress.pack_id,
             "preset_name": progress.preset_name,
             "word_id": result.word_id,
@@ -299,6 +329,7 @@ async def card_task_response(
         write_raw_logs({
             "sid": sid,
             "event": "task_response",
+            "algo_version": progress.algo_version,
             "pack_id": progress.pack_id,
             "task_type": result.task_type,
             "correct": result.correct,

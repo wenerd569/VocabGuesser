@@ -219,3 +219,9 @@ __marimo__/
 
 logs/*
 task.md
+
+data/
+CLAUDE.md
+ideas.md
+memory/
+data/chunks.db
