@@ -7,11 +7,22 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from .config import LEARNED_THRESHOLD, SHOWS_THRESHOLD
+from .config import ALGO_VERSION, LEARNED_THRESHOLD, SHOWS_THRESHOLD
 from .storage import Pack, Preset
 
 
 # ── Simple result types ───────────────────────────────────────────────────────
+
+@dataclass
+class AnswerRecord:
+    """One interaction event stored in-session for the LLM scheduler prompt."""
+    word_id: int
+    task_type: str          # "flashcard" | "fill_gap" | "which_definition" | "action"
+    action: str             # e.g. "task_correct", "task_wrong", "learned", "again"
+    delta: float
+    familiarity_after: float
+    correct: bool | None = None  # None for direct flashcard button presses
+
 
 @dataclass
 class ActionResult:
@@ -201,6 +212,8 @@ class PackProgress:
     word_info: dict[int, WordInfo] = field(default_factory=dict)
     current: int | None = None
     current_task: Task | None = None
+    algo_version: str = "v1_legacy"
+    history: list[AnswerRecord] = field(default_factory=list)
 
     @classmethod
     def from_pack(cls, pack: Pack, preset: Preset) -> "PackProgress":
@@ -211,6 +224,7 @@ class PackProgress:
             remaining=deque(),
             pack_name=pack.pack_name,
             word_info=dict(),
+            algo_version=ALGO_VERSION,
         )
         for wid in pack.word_ids:
             progress.add_new_word(wid)
@@ -221,7 +235,7 @@ class PackProgress:
             self.current = self.remaining[0]
         return self.current
 
-    def _pop_and_advance(self, delta: float, action: str) -> ActionResult:
+    def _pop_and_advance(self, delta: float, action: str, correct: bool | None = None) -> ActionResult:
         word_id = self.remaining.popleft()
         if word_id in self.word_info:
             self.word_info[word_id].update(delta)
@@ -235,6 +249,14 @@ class PackProgress:
             self.learned.add(word_id)
         else:
             self.remaining.append(word_id)
+        self.history.append(AnswerRecord(
+            word_id=word_id,
+            task_type=self.current_task.task_type if self.current_task else "action",
+            action=action,
+            delta=delta,
+            familiarity_after=new_fam if new_fam is not None else 0.0,
+            correct=correct,
+        ))
         self.current = None
         self.current_task = None
         return ActionResult(
@@ -254,7 +276,7 @@ class PackProgress:
         correct = _evaluate_task(answer, task)
         deltas = list(self.actions.values())
         delta = max(deltas) if correct else min(deltas)
-        result = self._pop_and_advance(delta, "task_correct" if correct else "task_wrong")
+        result = self._pop_and_advance(delta, "task_correct" if correct else "task_wrong", correct=correct)
         return TaskResult(
             correct=correct,
             correct_word=task.correct_word,
