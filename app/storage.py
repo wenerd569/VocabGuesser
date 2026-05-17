@@ -51,12 +51,15 @@ class Preset:
 def _parse_sense(raw: dict, where: str) -> Sense:
     if not isinstance(raw, dict):
         raise ValueError(f"{where}: definition entry must be an object")
-    # Accept both 'pos' (new) and 'part_of_speech' (old) keys.
+
     pos = raw.get("pos") or raw.get("part_of_speech") or ""
     txt = raw.get("text", "")
-    if not isinstance(pos, str) or not isinstance(txt, str):
-        raise ValueError(f"{where}: pos and text must be strings")
-    return Sense(pos=pos, text=txt)
+    example = raw.get("example", "")
+
+    if not isinstance(pos, str) or not isinstance(txt, str) or not isinstance(example, str):
+        raise ValueError(f"{where}: pos, text and example must be strings")
+
+    return Sense(pos=pos, text=txt, example=example)
 
 
 def _parse_word(raw: dict, where: str) -> Word:

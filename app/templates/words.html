@@ -74,7 +74,13 @@
               {% if w.eng_definitions %}
                 <ol class="defs">
                   {% for d in w.eng_definitions %}
-                    <li>{% if d.pos %}<em>({{ d.pos|capitalize }})</em>{% endif %} {{ d.text }}</li>
+                    <li>
+                      {% if d.pos %}<em>({{ d.pos|capitalize }})</em>{% endif %}
+                      {{ d.text }}
+                      {% if d.example %}
+                        <div class="muted">Example: {{ d.example }}</div>
+                      {% endif %}
+                    </li>
                   {% endfor %}
                 </ol>
               {% else %}
