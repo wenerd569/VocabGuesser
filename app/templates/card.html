@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ word.word if word else "Card" }} · VocabGuesser{% endblock %}
+{% block title %}Study Card · VocabGuesser{% endblock %}
+{% block meta_description %}Practice vocabulary with interactive cards{% endblock %}
 {% block content %}
   <p class="muted">
     <a href="/">← All packs</a> · {{ pack.pack_name }} ·
@@ -43,7 +44,13 @@
         {% if word and word.eng_definitions and not task.task_type == "which_definition" %}
           <ol class="defs">
             {% for d in word.eng_definitions %}
-              <li>{% if d.pos %}<em>({{ d.pos|capitalize }})</em>{% endif %} {{ d.text }}</li>
+              <li>
+                {% if d.pos %}<em>({{ d.pos|capitalize }})</em>{% endif %}
+                {{ d.text }}
+                {% if d.example %}
+                  <div class="muted">Example: {{ d.example }}</div>
+                {% endif %}
+              </li>
             {% endfor %}
           </ol>
         {% else %}
@@ -237,7 +244,7 @@
         .then(function(r){ return r.json(); })
         .then(function(d){
           if (d.added > 0) {
-            st.textContent = 'Added ' + d.added + ' word' + (d.added !== 1 ? 's' : '') + ': ' + d.words.join(', ') + '.';
+            st.textContent = 'Added ' + d.added + ' word' + (d.added !== 1 ? 's' : '') + ' to the queue.';
           } else {
             st.textContent = 'No unknown words left to add.';
           }
