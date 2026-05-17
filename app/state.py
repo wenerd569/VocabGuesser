@@ -11,6 +11,21 @@ from .config import LEARNED_THRESHOLD, SHOWS_THRESHOLD
 from .storage import Pack, Preset
 
 
+TASK_DELTAS = {
+    "which_definition": {
+        "correct": 0.4,
+        "wrong": 0.0,
+    },
+    "fill_gap_choice": {
+        "correct": 0.6,
+        "wrong": 0.0,
+    },
+    "fill_gap_text": {
+        "correct": 1.0,
+        "wrong": 0.0,
+    },
+}
+
 # ── Simple result types ───────────────────────────────────────────────────────
 
 @dataclass
@@ -94,10 +109,13 @@ def _generate_task(
     other_words: list,  # list[storage.Word] from the session
     chunk: str | None,
     actions: dict[str, float],
+    is_first_show: bool = False,
 ) -> Task:
     """Pick a task type randomly and build a Task for the given word."""
     # Source text: prefer chunk, fall back to first definition sentence
     source_text: str | None = chunk
+    if is_first_show:
+        return Task(task_type="flashcard", word_id=word.word_id, correct_word=word.word)
     if not source_text and word.eng_definitions:
         source_text = word.eng_definitions[0].text
 
@@ -108,11 +126,13 @@ def _generate_task(
     ]
 
     # Determine available task types + weights
-    weights: dict[str, float] = {"flashcard": 1.0}
+    weights: dict[str, float] = {}
     if source_text:
         weights["fill_gap"] = 2.0
     if len(def_candidates) >= 2 and word.eng_definitions:
         weights["which_definition"] = 1.0
+    if not weights:
+        return Task(task_type="flashcard", word_id=word.word_id, correct_word=word.word)
 
     task_type = random.choices(
         list(weights.keys()), weights=list(weights.values()), k=1
@@ -252,8 +272,16 @@ class PackProgress:
             return None
         task = self.current_task
         correct = _evaluate_task(answer, task)
-        deltas = list(self.actions.values())
-        delta = max(deltas) if correct else min(deltas)
+        if task.task_type == "which_definition":
+            delta_key = "which_definition"
+        elif task.task_type == "fill_gap" and task.answer_mode == "choice":
+            delta_key = "fill_gap_choice"
+        elif task.task_type == "fill_gap" and task.answer_mode == "text":
+            delta_key = "fill_gap_text"
+        else:
+            delta_key = "which_definition"
+
+        delta = TASK_DELTAS[delta_key]["correct" if correct else "wrong"]
         result = self._pop_and_advance(delta, "task_correct" if correct else "task_wrong")
         return TaskResult(
             correct=correct,
@@ -264,7 +292,9 @@ class PackProgress:
         )
 
     def generate_task(self, word: Any, other_words: list, chunk: str | None) -> Task:
-        task = _generate_task(word, other_words, chunk, self.actions)
+        info = self.word_info.get(word.word_id)
+        is_first_show = info is None or info.shows == 0
+        task = _generate_task(word, other_words, chunk, self.actions, is_first_show)
         self.current_task = task
         return task
 
