@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-DATA_DIR    = Path("/app/data")
-PRESETS_DIR = Path("/app/presets")
-LOGS_DIR    = Path("/app/logs")
+DATA_DIR    = Path(os.getenv("DATA_DIR", "/app/data"))
+PRESETS_DIR = Path(os.getenv("PRESETS_DIR", "/app/presets"))
+LOGS_DIR    = Path(os.getenv("LOGS_DIR", "/app/logs"))
 
 PACKS_PATH   = DATA_DIR    / "packs.jsonl"
 WORDS_PATH   = DATA_DIR    / "words.jsonl"
